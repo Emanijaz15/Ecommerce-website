@@ -1,0 +1,195 @@
+{% extends 'base.html' %}
+
+{% block title %}Shopping Cart - Fashion Store{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<div class="container py-5">
+    <h1 class="mb-4"><i class="fas fa-shopping-cart me-2"></i>Shopping Cart</h1>
+    
+    {% if cart.items.all %}
+    <div class="row">
+        <!-- Cart Items -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Cart Items ({{ cart.total_items }} items)</h5>
+                </div>
+                <div class="card-body">
+                    {% for item in cart.items.all %}
+                    <div class="row align-items-center mb-4 cart-item" data-item-id="{{ item.id }}">
+                        <div class="col-md-2">
+                            <img src="{{ item.product.image.url }}" class="img-fluid rounded" alt="{{ item.product.name }}" style="height: 100px; object-fit: cover;">
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="mb-1">{{ item.product.name }}</h6>
+                            <p class="text-muted mb-1">{{ item.product.category.name }} • {{ item.product.get_gender_display }}</p>
+                            <span class="price">${{ item.product.price }}</span>
+                            {% if item.product.original_price %}
+                            <span class="original-price ms-2">${{ item.product.original_price }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3">
+                            <div class="input-group" style="max-width: 150px;">
+                                <button class="btn btn-outline-secondary btn-sm" type="button" onclick="updateQuantity({{ item.id }}, -1)">-</button>
+                                <input type="number" class="form-control text-center" value="{{ item.quantity }}" min="1" max="{{ item.product.stock }}" 
+                                       onchange="updateQuantity({{ item.id }}, this.value, true)">
+                                <button class="btn btn-outline-secondary btn-sm" type="button" onclick="updateQuantity({{ item.id }}, 1)">+</button>
+                            </div>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <span class="price item-total">${{ item.total_price }}</span>
+                        </div>
+                        <div class="col-md-1 text-end">
+                            <button class="btn btn-outline-danger btn-sm" onclick="removeItem({{ item.id }})">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Cart Summary -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Order Summary</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Subtotal ({{ cart.total_items }} items):</span>
+                        <span class="price cart-subtotal">${{ cart.total_price }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Shipping:</span>
+                        <span class="text-success">FREE</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between mb-3">
+                        <strong>Total:</strong>
+                        <strong class="price cart-total">${{ cart.total_price }}</strong>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'store:checkout' %}" class="btn btn-primary btn-lg">
+                            <i class="fas fa-credit-card me-2"></i>Proceed to Checkout
+                        </a>
+                        <a href="{% url 'store:product_list' %}" class="btn btn-outline-primary">
+                            <i class="fas fa-arrow-left me-2"></i>Continue Shopping
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Promo Code -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">Promo Code</h6>
+                </div>
+                <div class="card-body">
+                    <div class="input-group">
+                        <input type="text" class="form-control" placeholder="Enter promo code">
+                        <button class="btn btn-outline-primary" type="button">Apply</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-shopping-cart fa-3x text-muted mb-3"></i>
+        <h3>Your cart is empty</h3>
+        <p class="text-muted mb-4">Looks like you haven't added any items to your cart yet.</p>
+        <a href="{% url 'store:product_list' %}" class="btn btn-primary btn-lg">
+            <i class="fas fa-shopping-bag me-2"></i>Start Shopping
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function updateQuantity(itemId, change, isDirectInput = false) {
+    let quantity;
+    if (isDirectInput) {
+        quantity = parseInt(change);
+    } else {
+        const input = document.querySelector(`[data-item-id="${itemId}"] input`);
+        quantity = parseInt(input.value) + parseInt(change);
+    }
+    
+    if (quantity < 1) return;
+    
+    fetch(`{% url 'store:update_cart_quantity' 0 %}`.replace('0', itemId), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: `quantity=${quantity}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update item total
+            const itemElement = document.querySelector(`[data-item-id="${itemId}"]`);
+            const itemTotal = itemElement.querySelector('.item-total');
+            itemTotal.textContent = `$${data.item_total}`;
+            
+            // Update cart totals
+            document.querySelector('.cart-subtotal').textContent = `$${data.cart_total_price}`;
+            document.querySelector('.cart-total').textContent = `$${data.cart_total_price}`;
+            
+            // Update cart count in navbar
+            const cartCount = document.querySelector('.cart-count');
+            if (cartCount) {
+                cartCount.textContent = data.cart_total;
+            }
+        }
+    });
+}
+
+function removeItem(itemId) {
+    if (confirm('Are you sure you want to remove this item from your cart?')) {
+        fetch(`{% url 'store:remove_from_cart' 0 %}`.replace('0', itemId), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Remove item from DOM
+                const itemElement = document.querySelector(`[data-item-id="${itemId}"]`);
+                itemElement.remove();
+                
+                // Update cart count in navbar
+                const cartCount = document.querySelector('.cart-count');
+                if (cartCount) {
+                    cartCount.textContent = data.cart_total;
+                }
+                
+                // Update cart totals if elements exist
+                const cartSubtotal = document.querySelector('.cart-subtotal');
+                const cartTotal = document.querySelector('.cart-total');
+                if (cartSubtotal) cartSubtotal.textContent = `$${data.cart_total_price || 0}`;
+                if (cartTotal) cartTotal.textContent = `$${data.cart_total_price || 0}`;
+                
+                // Reload page if cart is empty
+                if (data.cart_total == 0) {
+                    location.reload();
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error removing item:', error);
+            alert('Error removing item from cart. Please try again.');
+        });
+    }
+}
+</script>
+{% endblock %} 
